@@ -21,19 +21,11 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
-  const [submissionCode, setSubmissionCode] = useState<string | null>(null)
+  const [shouldRedirect, setShouldRedirect] = useState(false)
   const [comments, setComments] = useState<{ [key: string]: string }>({}) // id -> comment
   const [error, setError] = useState<string | null>(null)
 
-  // Generate a random 16-character code
-  const generateSubmissionCode = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    let code = ''
-    for (let i = 0; i < 16; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
-    return code
-  }
+  const PROLIFIC_COMPLETION_URL = 'https://app.prolific.com/submissions/complete?cc=C1HEEFFM'
 
   useEffect(() => {
     loadData()
@@ -183,6 +175,24 @@ export default function Home() {
     }
   }
 
+  // Check if all sentences have been interacted with
+  const checkAllInteractions = () => {
+    if (data.length === 0) return false
+
+    return data.every(row => {
+      // Check if rankings have been changed from original order
+      const hasReranked = row.rankedColumnNames && row.translationColumns && 
+        JSON.stringify(row.rankedColumnNames) !== JSON.stringify(row.translationColumns)
+      
+      // Check if comment has been entered
+      const hasComment = comments[row.id] && comments[row.id].trim().length > 0
+      
+      return hasReranked && hasComment
+    })
+  }
+
+  const canSubmit = checkAllInteractions()
+
   const handleSubmit = async () => {
     console.log('=== SUBMIT BUTTON CLICKED ===')
     console.log('Data length:', data.length)
@@ -193,8 +203,37 @@ export default function Home() {
     }
     
     if (data.length === 0) {
-      console.log('No data to submit, returning')
       alert('No data to submit')
+      return
+    }
+
+    // Check if all sentences have been interacted with
+    if (!canSubmit) {
+      const missingInteractions = data.filter(row => {
+        const hasReranked = row.rankedColumnNames && row.translationColumns && 
+          JSON.stringify(row.rankedColumnNames) !== JSON.stringify(row.translationColumns)
+        const hasComment = comments[row.id] && comments[row.id].trim().length > 0
+        return !hasReranked || !hasComment
+      })
+      
+      const missingReranks = missingInteractions.filter(row => {
+        const hasReranked = row.rankedColumnNames && row.translationColumns && 
+          JSON.stringify(row.rankedColumnNames) !== JSON.stringify(row.translationColumns)
+        return !hasReranked
+      })
+      const missingComments = missingInteractions.filter(row => {
+        const hasComment = comments[row.id] && comments[row.id].trim().length > 0
+        return !hasComment
+      })
+      
+      let message = 'Please complete all interactions before submitting:\n\n'
+      if (missingReranks.length > 0) {
+        message += `- Reorder rankings for ${missingReranks.length} sentence(s)\n`
+      }
+      if (missingComments.length > 0) {
+        message += `- Add comments for ${missingComments.length} sentence(s)\n`
+      }
+      alert(message)
       return
     }
 
@@ -203,25 +242,15 @@ export default function Home() {
       row.rankedTranslations && row.rankedTranslations.length > 0
     )
 
-    console.log('All ranked?', allRanked)
-    console.log('Data check:', data.map(row => ({
-      id: row.id,
-      hasRankedTranslations: !!row.rankedTranslations,
-      hasRankedColumnNames: !!row.rankedColumnNames,
-      rankedColumnNamesLength: row.rankedColumnNames?.length || 0
-    })))
-
     if (!allRanked) {
       alert('Please rank all translations before submitting')
       return
     }
 
-    console.log('Setting submitting to true')
     setSubmitting(true)
     setError(null)
 
     try {
-      console.log('Starting annotation mapping...')
       // Validate that we have ranked column names
       const invalidRows = data.filter(row => !row.rankedColumnNames || row.rankedColumnNames.length === 0)
       if (invalidRows.length > 0) {
@@ -306,10 +335,14 @@ export default function Home() {
         throw new Error(result.error || 'Failed to update Google Sheet')
       }
 
-      // Generate submission code and show thank you page
-      const code = generateSubmissionCode()
-      setSubmissionCode(code)
+      // Redirect to Prolific completion URL
       setSubmitted(true)
+      setShouldRedirect(true)
+      
+      // Redirect after a brief delay to show success message
+      setTimeout(() => {
+        window.location.href = PROLIFIC_COMPLETION_URL
+      }, 1500)
     } catch (err: any) {
       setError(err.message || 'Failed to submit annotations')
     } finally {
@@ -317,8 +350,8 @@ export default function Home() {
     }
   }
 
-  // Show thank you page after submission
-  if (submitted && submissionCode) {
+  // Show thank you message before redirect
+  if (submitted && shouldRedirect) {
     return (
       <div className="container">
         <div className="header">
@@ -332,36 +365,12 @@ export default function Home() {
           borderRadius: '8px',
           marginTop: '30px'
         }}>
-          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '20px', color: '#333' }}>
-            Your Submission Code:
+          <div style={{ fontSize: '1.5rem', marginBottom: '20px', color: '#333' }}>
+            Redirecting you to complete the survey...
           </div>
-          <div style={{
-            fontSize: '2rem',
-            fontFamily: 'monospace',
-            letterSpacing: '0.2em',
-            background: '#fff',
-            padding: '20px',
-            borderRadius: '8px',
-            border: '2px solid #667eea',
-            marginBottom: '20px',
-            color: '#667eea',
-            fontWeight: 'bold'
-          }}>
-            {submissionCode}
+          <div style={{ color: '#666', fontSize: '1.1rem', marginBottom: '20px' }}>
+            If you are not redirected automatically, <a href={PROLIFIC_COMPLETION_URL} style={{ color: '#667eea' }}>click here</a>.
           </div>
-          <p style={{ color: '#666', fontSize: '1.1rem' }}>
-            Please copy this code and paste it on the other website to prove you completed the survey.
-          </p>
-          <button
-            onClick={() => {
-              navigator.clipboard.writeText(submissionCode)
-              alert('Code copied to clipboard!')
-            }}
-            className="btn btn-primary"
-            style={{ marginTop: '20px' }}
-          >
-            Copy Code to Clipboard
-          </button>
         </div>
       </div>
     )
@@ -498,15 +507,27 @@ export default function Home() {
               handleSubmit()
             }} 
             className="btn btn-secondary" 
-            style={{ fontSize: '1.1rem', padding: '15px 30px' }}
-            disabled={submitting || submitted}
+            style={{ 
+              fontSize: '1.1rem', 
+              padding: '15px 30px',
+              opacity: canSubmit ? 1 : 0.5,
+              cursor: canSubmit ? 'pointer' : 'not-allowed'
+            }}
+            disabled={submitting || submitted || !canSubmit}
             type="button"
           >
             {submitting ? 'Submitting...' : submitted ? 'Submitted!' : 'Submit Annotations'}
           </button>
-          <p style={{ marginTop: '15px', color: '#666' }}>
-            Your rankings will be saved to the Google Sheet.
-          </p>
+          {!canSubmit && (
+            <p style={{ marginTop: '15px', color: '#d32f2f', fontSize: '0.9rem' }}>
+              ⚠️ Please interact with all {data.length} sentences: reorder rankings and add comments for each one.
+            </p>
+          )}
+          {canSubmit && (
+            <p style={{ marginTop: '15px', color: '#666' }}>
+              ✓ All interactions complete. Your rankings and comments will be saved to the Google Sheet.
+            </p>
+          )}
         </div>
       )}
     </div>
