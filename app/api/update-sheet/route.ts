@@ -6,7 +6,7 @@ const GOOGLE_APPS_SCRIPT_URL = process.env.GOOGLE_APPS_SCRIPT_URL
 interface AnnotationUpdate {
   id: string
   rowIndex: number
-  rankings: string[] // Ordered list of translations (ranked 1-7)
+  rankings: string[] // Ordered list of column names (e.g., ["ca", "no", "ad", "an", "bo", "pa", "op"])
 }
 
 // Helper to parse CSV line properly (handles quoted fields)

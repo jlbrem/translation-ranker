@@ -7,7 +7,9 @@ interface TranslationRow {
   id: string
   sentence: string
   translations: string[]
+  translationColumns: string[] // Column names (ad, an, bo, ca, op, pa, no) for each translation
   rankedTranslations?: string[]
+  rankedColumnNames?: string[] // Column names in ranked order
   originalRowIndex?: number // Store original row index for updating
 }
 
@@ -56,7 +58,10 @@ export default function Home() {
 
       // Translation columns are after sentence (columns C-I: ad, an, bo, ca, op, pa, no)
       const translationStartIndex = sentenceIndex + 1
-      const translationColumns = headers.slice(translationStartIndex, translationStartIndex + 7)
+      const headerColumnNames = headers.slice(translationStartIndex, translationStartIndex + 7).map(h => h.toLowerCase().trim())
+      
+      // Debug: log column names extracted
+      console.log('Translation column headers:', headerColumnNames)
 
       // Parse all rows
       const allRows: TranslationRow[] = []
@@ -71,11 +76,25 @@ export default function Home() {
         if (!id || !sentence) continue
 
         const translations: string[] = []
+        const translationColumns: string[] = []
+        
+        // Map translations to their column names
         for (let j = 0; j < 7; j++) {
           const translation = row[translationStartIndex + j]?.trim() || ''
-          if (translation) {
+          const columnName = headerColumnNames[j] || '' // Already lowercase from extraction
+          
+          if (translation && columnName) {
             translations.push(translation)
+            translationColumns.push(columnName)
           }
+        }
+        
+        // Debug: log first row's mapping
+        if (i === 1) {
+          console.log('First row translation mapping:', {
+            translations: translations.slice(0, 3),
+            columnNames: translationColumns.slice(0, 3)
+          })
         }
 
         if (translations.length > 0) {
@@ -83,7 +102,9 @@ export default function Home() {
             id,
             sentence,
             translations,
+            translationColumns,
             rankedTranslations: [...translations],
+            rankedColumnNames: [...translationColumns],
             originalRowIndex: i + 1 // 1-indexed for Google Sheets
           })
         }
@@ -133,38 +154,130 @@ export default function Home() {
     const newData = [...data]
     const currentItem = newData[rowIndex]
     
-    if (currentItem && currentItem.rankedTranslations) {
-      const items = Array.from(currentItem.rankedTranslations)
-      const [reorderedItem] = items.splice(result.source.index, 1)
-      items.splice(result.destination.index, 0, reorderedItem)
+    if (currentItem && currentItem.rankedTranslations && currentItem.rankedColumnNames) {
+      // Reorder both translations and column names
+      const translations = Array.from(currentItem.rankedTranslations)
+      const columnNames = Array.from(currentItem.rankedColumnNames)
       
-      currentItem.rankedTranslations = items
+      const [reorderedTranslation] = translations.splice(result.source.index, 1)
+      const [reorderedColumnName] = columnNames.splice(result.source.index, 1)
+      
+      translations.splice(result.destination.index, 0, reorderedTranslation)
+      columnNames.splice(result.destination.index, 0, reorderedColumnName)
+      
+      currentItem.rankedTranslations = translations
+      currentItem.rankedColumnNames = columnNames
       setData(newData)
     }
   }
 
   const handleSubmit = async () => {
-    if (data.length === 0) return
+    console.log('=== SUBMIT BUTTON CLICKED ===')
+    console.log('Data length:', data.length)
+    
+    // Force visible alert to test if function is called
+    if (typeof window !== 'undefined') {
+      console.log('Window object available, function is executing')
+    }
+    
+    if (data.length === 0) {
+      console.log('No data to submit, returning')
+      alert('No data to submit')
+      return
+    }
 
     // Check if all rows are ranked
     const allRanked = data.every(row => 
       row.rankedTranslations && row.rankedTranslations.length > 0
     )
 
+    console.log('All ranked?', allRanked)
+    console.log('Data check:', data.map(row => ({
+      id: row.id,
+      hasRankedTranslations: !!row.rankedTranslations,
+      hasRankedColumnNames: !!row.rankedColumnNames,
+      rankedColumnNamesLength: row.rankedColumnNames?.length || 0
+    })))
+
     if (!allRanked) {
       alert('Please rank all translations before submitting')
       return
     }
 
+    console.log('Setting submitting to true')
     setSubmitting(true)
     setError(null)
 
     try {
-      const annotations = data.map(row => ({
-        id: row.id,
-        rowIndex: row.originalRowIndex || 0,
-        rankings: row.rankedTranslations || []
-      }))
+      console.log('Starting annotation mapping...')
+      // Validate that we have ranked column names
+      const invalidRows = data.filter(row => !row.rankedColumnNames || row.rankedColumnNames.length === 0)
+      if (invalidRows.length > 0) {
+        alert(`Error: Some rows are missing column name rankings. Please refresh and try again.`)
+        setSubmitting(false)
+        return
+      }
+
+      const annotations = data.map(row => {
+        // Ensure we're sending column names, not translations
+        let rankings = row.rankedColumnNames || []
+        
+        // If rankedColumnNames is missing or empty, try to derive from rankedTranslations
+        if (rankings.length === 0 && row.rankedTranslations && row.translations && row.translationColumns) {
+          // Map each ranked translation back to its column name
+          rankings = row.rankedTranslations.map(rankedTranslation => {
+            // Find the index of this translation in the original translations array
+            const origIndex = row.translations.findIndex(t => t === rankedTranslation)
+            if (origIndex >= 0 && origIndex < row.translationColumns.length) {
+              return row.translationColumns[origIndex]
+            }
+            return null
+          }).filter(cn => cn !== null) as string[]
+          
+          console.warn('Derived column names from translations for row:', row.id, rankings)
+        }
+        
+        if (rankings.length === 0) {
+          console.error('Missing rankedColumnNames for row:', row.id, {
+            hasRankedColumnNames: !!row.rankedColumnNames,
+            hasRankedTranslations: !!row.rankedTranslations,
+            hasTranslationColumns: !!row.translationColumns
+          })
+        }
+        
+        // Final check: ensure rankings are column names (short strings), not translations (long text)
+        const hasLongStrings = rankings.some(r => r && r.length > 10)
+        if (hasLongStrings) {
+          console.error('ERROR: Rankings contain translation text instead of column names:', {
+            rowId: row.id,
+            rankings: rankings.slice(0, 2)
+          })
+          throw new Error(`Row ${row.id}: Rankings appear to contain translation text instead of column names. Please refresh and try again.`)
+        }
+        
+        return {
+          id: row.id,
+          rowIndex: row.originalRowIndex || 0,
+          rankings: rankings // Send column names in ranked order (e.g., ["ca", "no", "ad", ...])
+        }
+      })
+      
+      // Debug: log what we're sending
+      console.log('Submitting annotations:', annotations.map(a => ({ 
+        id: a.id, 
+        rankings: a.rankings,
+        rankingsLength: a.rankings?.length || 0,
+        firstRanking: a.rankings?.[0]
+      })))
+      
+      // Validate before sending
+      const emptyRankings = annotations.filter(a => !a.rankings || a.rankings.length === 0)
+      if (emptyRankings.length > 0) {
+        console.error('ERROR: Some annotations have empty rankings:', emptyRankings)
+        alert(`Error: ${emptyRankings.length} annotation(s) have empty rankings. Please check the console for details.`)
+        setSubmitting(false)
+        return
+      }
 
       const response = await fetch('/api/update-sheet', {
         method: 'POST',
@@ -312,10 +425,15 @@ export default function Home() {
       {data.length > 0 && (
         <div className="save-section">
           <button 
-            onClick={handleSubmit} 
+            onClick={(e) => {
+              e.preventDefault()
+              console.log('Button clicked!')
+              handleSubmit()
+            }} 
             className="btn btn-secondary" 
             style={{ fontSize: '1.1rem', padding: '15px 30px' }}
             disabled={submitting || submitted}
+            type="button"
           >
             {submitting ? 'Submitting...' : submitted ? 'Submitted!' : 'Submit Annotations'}
           </button>

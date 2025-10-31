@@ -24,51 +24,69 @@
 const SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU';
 
 /**
+ * Helper function to create JSON response
+ * Note: Google Apps Script Web Apps with "Anyone" access automatically handle CORS
+ */
+function createJSONResponse(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+/**
+ * Handle GET request (for testing and authorization)
+ */
+function doGet(e) {
+  return createJSONResponse({
+    success: true,
+    message: 'Google Apps Script is deployed and authorized',
+    instructions: 'This endpoint accepts POST requests with annotations data',
+    example: {
+      method: 'POST',
+      body: {
+        annotations: [
+          {
+            id: 'es-cu-0',
+            rowIndex: 2,
+            rankings: ['ca', 'no', 'ad', 'an', 'bo', 'pa', 'op']
+          }
+        ]
+      }
+    }
+  });
+}
+
+/**
  * Handle OPTIONS request for CORS preflight
+ * Note: Google Apps Script handles CORS automatically for "Anyone" access
  */
 function doOptions() {
-  return ContentService.createTextOutput('')
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeaders({
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    });
+  return createJSONResponse({ message: 'CORS preflight' });
 }
 
 /**
  * Handle POST request to update annotations
+ * Each sentence needs 3 annotations (Annotator_1, Annotator_2, Annotator_3)
+ * Uses the first available annotator column for each sentence
  */
 function doPost(e) {
-  // CORS headers
-  const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Content-Type': 'application/json'
-  };
-  
   try {
     // Parse request data
     let data;
     try {
       data = JSON.parse(e.postData.contents);
     } catch (parseError) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ error: 'Invalid JSON in request body', details: parseError.toString() })
-      )
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeaders(corsHeaders);
+      return createJSONResponse({
+        error: 'Invalid JSON in request body',
+        details: parseError.toString()
+      });
     }
     
     const annotations = data.annotations;
     
     if (!annotations || !Array.isArray(annotations)) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ error: 'Invalid data: annotations must be an array' })
-      )
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeaders(corsHeaders);
+      return createJSONResponse({
+        error: 'Invalid data: annotations must be an array'
+      });
     }
     
     // Open spreadsheet
@@ -76,21 +94,18 @@ function doPost(e) {
     try {
       spreadsheet = SpreadsheetApp.openById(SHEET_ID);
     } catch (sheetError) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ error: 'Failed to open spreadsheet', details: sheetError.toString() })
-      )
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeaders(corsHeaders);
+      return createJSONResponse({
+        error: 'Failed to open spreadsheet',
+        details: sheetError.toString()
+      });
     }
     
     const sheet = spreadsheet.getSheetByName('Sheet1');
     
     if (!sheet) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ error: 'Sheet1 not found in spreadsheet' })
-      )
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeaders(corsHeaders);
+      return createJSONResponse({
+        error: 'Sheet1 not found in spreadsheet'
+      });
     }
     
     // Get sheet headers to find column positions
@@ -99,40 +114,51 @@ function doPost(e) {
     const idColIndex = sheetHeaders.findIndex(h => h.toString().toLowerCase() === 'id') + 1;
     
     if (idColIndex === 0) {
-      return ContentService.createTextOutput(
-        JSON.stringify({ error: 'ID column not found in sheet headers' })
-      )
-      .setMimeType(ContentService.MimeType.JSON)
-      .setHeaders(corsHeaders);
+      return createJSONResponse({
+        error: 'ID column not found in sheet headers'
+      });
     }
     
-    // Check if annotation columns exist
-    const annotationCols = [
-      'ranked_translation_1',
-      'ranked_translation_2',
-      'ranked_translation_3',
-      'ranked_translation_4',
-      'ranked_translation_5',
-      'ranked_translation_6',
-      'ranked_translation_7'
-    ];
+    // Find or create Annotator columns (max 3: Annotator_1, Annotator_2, Annotator_3)
+    const annotatorColNames = ['Annotator_1', 'Annotator_2', 'Annotator_3'];
+    const annotatorColIndices = {};
+    let lastAnnotatorCol = lastCol;
     
-    let startCol = sheetHeaders.findIndex(h => 
-      h.toString().toLowerCase() === annotationCols[0].toLowerCase()
-    ) + 1;
+    // Find existing annotator columns or create them
+    for (let i = 0; i < annotatorColNames.length; i++) {
+      const colName = annotatorColNames[i];
+      let colIndex = sheetHeaders.findIndex(h => 
+        h.toString().trim().toLowerCase() === colName.toLowerCase()
+      ) + 1;
+      
+      if (colIndex === 0) {
+        // Column doesn't exist, create it
+        lastAnnotatorCol = lastCol + i + 1;
+        colIndex = lastAnnotatorCol;
+        sheet.getRange(1, colIndex).setValue(colName);
+        // Update sheetHeaders array for subsequent checks
+        sheetHeaders.push(colName);
+      }
+      
+      annotatorColIndices[colName] = colIndex;
+    }
     
-    // If columns don't exist, add them
-    if (startCol === 0) {
-      startCol = lastCol + 1;
-      // Add headers
-      sheet.getRange(1, startCol, 1, annotationCols.length).setValues([annotationCols]);
+    // Get all ID values to find row numbers
+    const lastRow = sheet.getLastRow();
+    const idRange = sheet.getRange(1, idColIndex, lastRow, 1);
+    const idValues = idRange.getValues();
+    
+    // Get all annotator column values to check what's already filled
+    const annotatorRanges = {};
+    const annotatorValues = {};
+    for (const colName of annotatorColNames) {
+      const colIndex = annotatorColIndices[colName];
+      annotatorRanges[colName] = sheet.getRange(2, colIndex, lastRow - 1, 1); // Start from row 2 (skip header)
+      annotatorValues[colName] = annotatorRanges[colName].getValues();
     }
     
     // Update rows
     const updates = [];
-    const lastRow = sheet.getLastRow();
-    const idRange = sheet.getRange(1, idColIndex, lastRow, 1);
-    const idValues = idRange.getValues();
     
     for (const ann of annotations) {
       // Find row by ID
@@ -146,38 +172,118 @@ function doPost(e) {
       }
       
       if (rowNum > 0) {
-        try {
-          // Update the row with rankings
-          const rankings = ann.rankings.slice(0, 7);
-          // Pad with empty strings if less than 7
-          while (rankings.length < 7) {
-            rankings.push('');
+        // Find which annotator column to use for this row
+        // Use the first column that doesn't have a value for this row
+        let targetColName = null;
+        let targetColIndex = null;
+        
+        for (const colName of annotatorColNames) {
+          const colIndex = annotatorColIndices[colName];
+          const valueIndex = rowNum - 2; // Adjust for header row (row 1) and array index (0-based)
+          
+          if (valueIndex >= 0 && valueIndex < annotatorValues[colName].length) {
+            const existingValue = annotatorValues[colName][valueIndex][0];
+            
+            // Check if this cell is empty or only whitespace
+            if (!existingValue || existingValue.toString().trim() === '') {
+              targetColName = colName;
+              targetColIndex = colIndex;
+              break;
+            }
+          } else {
+            // Row is beyond current data, use this column
+            targetColName = colName;
+            targetColIndex = colIndex;
+            break;
           }
-          sheet.getRange(rowNum, startCol, 1, 7).setValues([rankings]);
-          updates.push({ id: ann.id, row: rowNum, success: true });
+        }
+        
+        if (!targetColName) {
+          // All 3 annotator columns are filled for this row
+          updates.push({
+            id: ann.id,
+            success: false,
+            error: `All 3 annotator columns are already filled for this sentence`
+          });
+          continue;
+        }
+        
+        try {
+          // Validate that rankings are column names, not translations
+          const rankings = ann.rankings || [];
+          
+          // Debug: check if rankings is empty
+          if (!rankings || rankings.length === 0) {
+            throw new Error('Rankings array is empty. Annotation data: ' + JSON.stringify({
+              id: ann.id,
+              hasRankings: !!ann.rankings,
+              rankingsType: typeof ann.rankings
+            }));
+          }
+          
+          // Check if rankings look like column names (short, 2-3 chars) or translations (long sentences)
+          const looksLikeTranslations = rankings.some(r => r && r.length > 20);
+          
+          if (looksLikeTranslations) {
+            throw new Error('Received translation text instead of column names. Rankings: ' + JSON.stringify(rankings.slice(0, 2)));
+          }
+          
+          // Convert rankings array to comma-separated string (e.g., "ca,no,ad,an,bo,pa,op")
+          const rankingString = rankings.join(',');
+          
+          if (!rankingString || rankingString.trim() === '') {
+            throw new Error('Ranking string is empty after joining. Rankings: ' + JSON.stringify(rankings));
+          }
+          
+          // Update the cell with the ranking string
+          const targetCell = sheet.getRange(rowNum, targetColIndex);
+          targetCell.setValue(rankingString);
+          
+          // Force flush to ensure write
+          SpreadsheetApp.flush();
+          
+          // Verify the write
+          const verifyValue = targetCell.getValue();
+          
+          updates.push({
+            id: ann.id,
+            row: rowNum,
+            column: targetColName,
+            columnIndex: targetColIndex,
+            ranking: rankingString,
+            verified: verifyValue,
+            rankingsReceived: rankings,
+            success: true
+          });
         } catch (updateError) {
-          updates.push({ 
-            id: ann.id, 
-            success: false, 
-            error: `Failed to update row ${rowNum}: ${updateError.toString()}` 
+          updates.push({
+            id: ann.id,
+            row: rowNum,
+            success: false,
+            error: `Failed to update row ${rowNum}: ${updateError.toString()}`,
+            rankingsReceived: ann.rankings,
+            rankingsType: typeof ann.rankings
           });
         }
       } else {
-        updates.push({ id: ann.id, success: false, error: `Row not found for ID: ${ann.id}` });
+        updates.push({
+          id: ann.id,
+          success: false,
+          error: `Row not found for ID: ${ann.id}`
+        });
       }
     }
     
-    return ContentService.createTextOutput(
-      JSON.stringify({ success: true, updates: updates })
-    )
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeaders(corsHeaders);
+    return createJSONResponse({
+      success: true,
+      updates: updates
+    });
     
   } catch (error) {
-    return ContentService.createTextOutput(
-      JSON.stringify({ error: 'Unexpected error', details: error.toString(), stack: error.stack })
-    )
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeaders(corsHeaders);
+    return createJSONResponse({
+      error: 'Unexpected error',
+      details: error.toString(),
+      stack: error.stack
+    });
   }
 }
