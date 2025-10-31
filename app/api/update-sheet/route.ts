@@ -59,12 +59,47 @@ export async function POST(request: NextRequest) {
           body: JSON.stringify({ annotations }),
         })
 
+        // Get response text for better error messages
+        const responseText = await response.text()
+        
+        // Check if response is HTML (indicates authorization page or error)
+        if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+          return NextResponse.json(
+            { 
+              error: 'Google Apps Script authorization required',
+              details: 'The script needs to be authorized. Please visit the Google Apps Script Web App URL in your browser and authorize it.',
+              hint: 'Visit the GOOGLE_APPS_SCRIPT_URL in a browser, authorize the script, then try again.'
+            },
+            { status: 403 }
+          )
+        }
+        
+        // Try to parse as JSON
+        let result;
+        try {
+          result = JSON.parse(responseText)
+        } catch (parseError) {
+          // If response is not JSON, return helpful error
+          return NextResponse.json(
+            { 
+              error: 'Invalid response from Google Apps Script',
+              details: `Expected JSON but received: ${responseText.substring(0, 500)}`,
+              hint: 'The Google Apps Script may need to be redeployed or authorized. Check the script URL and authorization status.'
+            },
+            { status: 500 }
+          )
+        }
+        
         if (!response.ok) {
-          throw new Error(`Google Apps Script returned status ${response.status}`)
+          let errorMessage = `Google Apps Script returned status ${response.status}`
+          if (result.error) {
+            errorMessage = result.error
+          } else if (result.details) {
+            errorMessage = result.details
+          }
+          throw new Error(errorMessage)
         }
 
-        const result = await response.json()
-        
         if (result.error) {
           throw new Error(result.error)
         }
