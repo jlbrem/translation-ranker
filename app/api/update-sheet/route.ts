@@ -7,6 +7,7 @@ interface AnnotationUpdate {
   id: string
   rowIndex: number
   rankings: string[] // Ordered list of column names (e.g., ["ca", "no", "ad", "an", "bo", "pa", "op"])
+  comment?: string // Optional comment explaining the rankings
 }
 
 // Helper to parse CSV line properly (handles quoted fields)

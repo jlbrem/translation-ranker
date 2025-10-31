@@ -21,7 +21,19 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
+  const [submissionCode, setSubmissionCode] = useState<string | null>(null)
+  const [comments, setComments] = useState<{ [key: string]: string }>({}) // id -> comment
   const [error, setError] = useState<string | null>(null)
+
+  // Generate a random 16-character code
+  const generateSubmissionCode = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    let code = ''
+    for (let i = 0; i < 16; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
+    return code
+  }
 
   useEffect(() => {
     loadData()
@@ -258,7 +270,8 @@ export default function Home() {
         return {
           id: row.id,
           rowIndex: row.originalRowIndex || 0,
-          rankings: rankings // Send column names in ranked order (e.g., ["ca", "no", "ad", ...])
+          rankings: rankings, // Send column names in ranked order (e.g., ["ca", "no", "ad", ...])
+          comment: comments[row.id] || '' // Include comment for this sentence
         }
       })
       
@@ -293,17 +306,65 @@ export default function Home() {
         throw new Error(result.error || 'Failed to update Google Sheet')
       }
 
+      // Generate submission code and show thank you page
+      const code = generateSubmissionCode()
+      setSubmissionCode(code)
       setSubmitted(true)
-      setTimeout(() => {
-        // Reload with new random rows
-        loadData()
-        setSubmitted(false)
-      }, 2000)
     } catch (err: any) {
       setError(err.message || 'Failed to submit annotations')
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // Show thank you page after submission
+  if (submitted && submissionCode) {
+    return (
+      <div className="container">
+        <div className="header">
+          <h1>Thank You! 🎉</h1>
+          <p>Your annotations have been successfully submitted.</p>
+        </div>
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '40px',
+          background: '#f8f9fa',
+          borderRadius: '8px',
+          marginTop: '30px'
+        }}>
+          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', marginBottom: '20px', color: '#333' }}>
+            Your Submission Code:
+          </div>
+          <div style={{
+            fontSize: '2rem',
+            fontFamily: 'monospace',
+            letterSpacing: '0.2em',
+            background: '#fff',
+            padding: '20px',
+            borderRadius: '8px',
+            border: '2px solid #667eea',
+            marginBottom: '20px',
+            color: '#667eea',
+            fontWeight: 'bold'
+          }}>
+            {submissionCode}
+          </div>
+          <p style={{ color: '#666', fontSize: '1.1rem' }}>
+            Please copy this code and paste it on the other website to prove you completed the survey.
+          </p>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(submissionCode)
+              alert('Code copied to clipboard!')
+            }}
+            className="btn btn-primary"
+            style={{ marginTop: '20px' }}
+          >
+            Copy Code to Clipboard
+          </button>
+        </div>
+      </div>
+    )
   }
 
   if (loading) {
@@ -348,19 +409,6 @@ export default function Home() {
           </p>
         )}
       </div>
-
-      {submitted && (
-        <div style={{
-          padding: '15px',
-          background: '#4caf50',
-          color: 'white',
-          borderRadius: '6px',
-          marginBottom: '20px',
-          textAlign: 'center'
-        }}>
-          ✓ Annotations submitted successfully! Loading new examples...
-        </div>
-      )}
 
       {error && (
         <div style={{
@@ -419,6 +467,25 @@ export default function Home() {
               )}
             </Droppable>
           </DragDropContext>
+          
+          <div style={{ marginTop: '30px' }}>
+            <h3 style={{ marginBottom: '10px' }}>Comments:</h3>
+            <textarea
+              placeholder="Please explain your reasoning for these rankings. What did you like or dislike about the translation options?"
+              value={comments[item.id] || ''}
+              onChange={(e) => setComments(prev => ({ ...prev, [item.id]: e.target.value }))}
+              style={{
+                width: '100%',
+                minHeight: '100px',
+                padding: '12px',
+                border: '2px solid #ddd',
+                borderRadius: '6px',
+                fontSize: '0.95rem',
+                fontFamily: 'inherit',
+                resize: 'vertical'
+              }}
+            />
+          </div>
         </div>
       ))}
 

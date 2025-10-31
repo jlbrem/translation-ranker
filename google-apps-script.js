@@ -119,28 +119,45 @@ function doPost(e) {
       });
     }
     
-    // Find or create Annotator columns (max 3: Annotator_1, Annotator_2, Annotator_3)
-    const annotatorColNames = ['Annotator_1', 'Annotator_2', 'Annotator_3'];
-    const annotatorColIndices = {};
-    let lastAnnotatorCol = lastCol;
+    // Find or create Annotator columns (max 3 rounds)
+    // Each round has 2 columns: Annotator_X_Rankings and Annotator_X_Comments
+    const annotatorNumbers = [1, 2, 3];
+    const annotatorRankingColumns = {}; // e.g., {'Annotator_1_Rankings': columnIndex}
+    const annotatorCommentColumns = {}; // e.g., {'Annotator_1_Comments': columnIndex}
+    let nextColIndex = lastCol + 1;
     
-    // Find existing annotator columns or create them
-    for (let i = 0; i < annotatorColNames.length; i++) {
-      const colName = annotatorColNames[i];
-      let colIndex = sheetHeaders.findIndex(h => 
-        h.toString().trim().toLowerCase() === colName.toLowerCase()
+    // Find or create ranking and comment columns for each annotator round
+    for (const num of annotatorNumbers) {
+      const rankingColName = 'Annotator_' + num + '_Rankings';
+      const commentColName = 'Annotator_' + num + '_Comments';
+      
+      // Find ranking column
+      let rankingColIndex = sheetHeaders.findIndex(h => 
+        h.toString().trim().toLowerCase() === rankingColName.toLowerCase()
       ) + 1;
       
-      if (colIndex === 0) {
-        // Column doesn't exist, create it
-        lastAnnotatorCol = lastCol + i + 1;
-        colIndex = lastAnnotatorCol;
-        sheet.getRange(1, colIndex).setValue(colName);
-        // Update sheetHeaders array for subsequent checks
-        sheetHeaders.push(colName);
+      if (rankingColIndex === 0) {
+        // Create ranking column
+        rankingColIndex = nextColIndex;
+        sheet.getRange(1, rankingColIndex).setValue(rankingColName);
+        sheetHeaders.push(rankingColName);
+        nextColIndex++;
       }
+      annotatorRankingColumns[rankingColName] = rankingColIndex;
       
-      annotatorColIndices[colName] = colIndex;
+      // Find comment column
+      let commentColIndex = sheetHeaders.findIndex(h => 
+        h.toString().trim().toLowerCase() === commentColName.toLowerCase()
+      ) + 1;
+      
+      if (commentColIndex === 0) {
+        // Create comment column
+        commentColIndex = nextColIndex;
+        sheet.getRange(1, commentColIndex).setValue(commentColName);
+        sheetHeaders.push(commentColName);
+        nextColIndex++;
+      }
+      annotatorCommentColumns[commentColName] = commentColIndex;
     }
     
     // Get all ID values to find row numbers
@@ -148,13 +165,12 @@ function doPost(e) {
     const idRange = sheet.getRange(1, idColIndex, lastRow, 1);
     const idValues = idRange.getValues();
     
-    // Get all annotator column values to check what's already filled
-    const annotatorRanges = {};
-    const annotatorValues = {};
-    for (const colName of annotatorColNames) {
-      const colIndex = annotatorColIndices[colName];
-      annotatorRanges[colName] = sheet.getRange(2, colIndex, lastRow - 1, 1); // Start from row 2 (skip header)
-      annotatorValues[colName] = annotatorRanges[colName].getValues();
+    // Get all ranking column values to check what's already filled
+    const rankingColumnValues = {};
+    for (const rankingColName in annotatorRankingColumns) {
+      const colIndex = annotatorRankingColumns[rankingColName];
+      const range = sheet.getRange(2, colIndex, lastRow - 1, 1); // Start from row 2 (skip header)
+      rankingColumnValues[rankingColName] = range.getValues();
     }
     
     // Update rows
@@ -172,38 +188,50 @@ function doPost(e) {
       }
       
       if (rowNum > 0) {
-        // Find which annotator column to use for this row
-        // Use the first column that doesn't have a value for this row
-        let targetColName = null;
-        let targetColIndex = null;
+        // Find which annotator round to use for this row
+        // Use the first round that doesn't have a ranking value for this row
+        let targetRound = null;
+        let targetRankingColName = null;
+        let targetRankingColIndex = null;
+        let targetCommentColName = null;
+        let targetCommentColIndex = null;
         
-        for (const colName of annotatorColNames) {
-          const colIndex = annotatorColIndices[colName];
+        for (const num of annotatorNumbers) {
+          const rankingColName = 'Annotator_' + num + '_Rankings';
+          const commentColName = 'Annotator_' + num + '_Comments';
+          const rankingColIndex = annotatorRankingColumns[rankingColName];
+          const commentColIndex = annotatorCommentColumns[commentColName];
           const valueIndex = rowNum - 2; // Adjust for header row (row 1) and array index (0-based)
           
-          if (valueIndex >= 0 && valueIndex < annotatorValues[colName].length) {
-            const existingValue = annotatorValues[colName][valueIndex][0];
+          if (valueIndex >= 0 && valueIndex < rankingColumnValues[rankingColName].length) {
+            const existingValue = rankingColumnValues[rankingColName][valueIndex][0];
             
             // Check if this cell is empty or only whitespace
             if (!existingValue || existingValue.toString().trim() === '') {
-              targetColName = colName;
-              targetColIndex = colIndex;
+              targetRound = num;
+              targetRankingColName = rankingColName;
+              targetRankingColIndex = rankingColIndex;
+              targetCommentColName = commentColName;
+              targetCommentColIndex = commentColIndex;
               break;
             }
           } else {
-            // Row is beyond current data, use this column
-            targetColName = colName;
-            targetColIndex = colIndex;
+            // Row is beyond current data, use this round
+            targetRound = num;
+            targetRankingColName = rankingColName;
+            targetRankingColIndex = rankingColIndex;
+            targetCommentColName = commentColName;
+            targetCommentColIndex = commentColIndex;
             break;
           }
         }
         
-        if (!targetColName) {
-          // All 3 annotator columns are filled for this row
+        if (!targetRankingColName) {
+          // All 3 annotator rounds are filled for this row
           updates.push({
             id: ann.id,
             success: false,
-            error: `All 3 annotator columns are already filled for this sentence`
+            error: `All 3 annotator rounds are already filled for this sentence`
           });
           continue;
         }
@@ -235,24 +263,32 @@ function doPost(e) {
             throw new Error('Ranking string is empty after joining. Rankings: ' + JSON.stringify(rankings));
           }
           
-          // Update the cell with the ranking string
-          const targetCell = sheet.getRange(rowNum, targetColIndex);
-          targetCell.setValue(rankingString);
+          // Update the ranking cell
+          const rankingCell = sheet.getRange(rowNum, targetRankingColIndex);
+          rankingCell.setValue(rankingString);
+          
+          // Update the comment cell
+          const comment = ann.comment || '';
+          const commentCell = sheet.getRange(rowNum, targetCommentColIndex);
+          commentCell.setValue(comment);
           
           // Force flush to ensure write
           SpreadsheetApp.flush();
           
-          // Verify the write
-          const verifyValue = targetCell.getValue();
+          // Verify the writes
+          const verifyRanking = rankingCell.getValue();
+          const verifyComment = commentCell.getValue();
           
           updates.push({
             id: ann.id,
             row: rowNum,
-            column: targetColName,
-            columnIndex: targetColIndex,
+            round: targetRound,
+            rankingColumn: targetRankingColName,
+            commentColumn: targetCommentColName,
             ranking: rankingString,
-            verified: verifyValue,
-            rankingsReceived: rankings,
+            comment: comment,
+            verifiedRanking: verifyRanking,
+            verifiedComment: verifyComment,
             success: true
           });
         } catch (updateError) {
