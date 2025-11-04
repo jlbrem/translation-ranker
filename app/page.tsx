@@ -102,13 +102,20 @@ export default function Home() {
         }
 
         if (translations.length > 0) {
+          // Randomize the initial order of translations and column names
+          const shuffledIndices = Array.from({ length: translations.length }, (_, i) => i)
+            .sort(() => Math.random() - 0.5)
+          
+          const shuffledTranslations = shuffledIndices.map(idx => translations[idx])
+          const shuffledColumnNames = shuffledIndices.map(idx => translationColumns[idx])
+          
           allRows.push({
             id,
             sentence,
             translations,
             translationColumns,
-            rankedTranslations: [...translations],
-            rankedColumnNames: [...translationColumns],
+            rankedTranslations: shuffledTranslations,
+            rankedColumnNames: shuffledColumnNames,
             originalRowIndex: i + 1 // 1-indexed for Google Sheets
           })
         }
