@@ -60,14 +60,35 @@ export default function Home() {
         throw new Error('Required columns (id, sentence) not found')
       }
 
+      // Find annotator column indices
+      const annotator1Index = headers.findIndex(h => 
+        h.toLowerCase().trim() === 'annotator_1_rankings' || 
+        h.toLowerCase().trim() === 'annotator 1 rankings' ||
+        h.toLowerCase().trim() === 'annotator_1' ||
+        h.toLowerCase().trim() === 'annotator 1'
+      )
+      const annotator2Index = headers.findIndex(h => 
+        h.toLowerCase().trim() === 'annotator_2_rankings' || 
+        h.toLowerCase().trim() === 'annotator 2 rankings' ||
+        h.toLowerCase().trim() === 'annotator_2' ||
+        h.toLowerCase().trim() === 'annotator 2'
+      )
+      const annotator3Index = headers.findIndex(h => 
+        h.toLowerCase().trim() === 'annotator_3_rankings' || 
+        h.toLowerCase().trim() === 'annotator 3 rankings' ||
+        h.toLowerCase().trim() === 'annotator_3' ||
+        h.toLowerCase().trim() === 'annotator 3'
+      )
+
       // Translation columns are after sentence (columns C-I: ad, an, bo, ca, op, pa, no)
       const translationStartIndex = sentenceIndex + 1
       const headerColumnNames = headers.slice(translationStartIndex, translationStartIndex + 7).map(h => h.toLowerCase().trim())
       
       // Debug: log column names extracted
       console.log('Translation column headers:', headerColumnNames)
+      console.log('Annotator column indices:', { annotator1Index, annotator2Index, annotator3Index })
 
-      // Parse all rows
+      // Parse all rows and track annotation status
       const allRows: TranslationRow[] = []
       for (let i = 1; i < lines.length; i++) {
         const row = parseCSVLine(lines[i])
@@ -93,12 +114,19 @@ export default function Home() {
           }
         }
         
-        // Debug: log first row's mapping
-        if (i === 1) {
-          console.log('First row translation mapping:', {
-            translations: translations.slice(0, 3),
-            columnNames: translationColumns.slice(0, 3)
-          })
+        // Check annotator column values
+        const annotator1Value = annotator1Index >= 0 ? (row[annotator1Index]?.trim() || '') : ''
+        const annotator2Value = annotator2Index >= 0 ? (row[annotator2Index]?.trim() || '') : ''
+        const annotator3Value = annotator3Index >= 0 ? (row[annotator3Index]?.trim() || '') : ''
+        
+        // Determine which annotator round is empty (priority: 1, then 2, then 3)
+        let needsAnnotatorRound: 1 | 2 | 3 | null = null
+        if (!annotator1Value) {
+          needsAnnotatorRound = 1
+        } else if (!annotator2Value) {
+          needsAnnotatorRound = 2
+        } else if (!annotator3Value) {
+          needsAnnotatorRound = 3
         }
 
         if (translations.length > 0) {
@@ -116,16 +144,43 @@ export default function Home() {
             translationColumns,
             rankedTranslations: shuffledTranslations,
             rankedColumnNames: shuffledColumnNames,
-            originalRowIndex: i + 1 // 1-indexed for Google Sheets
-          })
+            originalRowIndex: i + 1, // 1-indexed for Google Sheets
+            needsAnnotatorRound // Track which round this row needs
+          } as TranslationRow & { needsAnnotatorRound: 1 | 2 | 3 | null })
         }
       }
 
-      // Select 5 random rows
-      const shuffled = [...allRows].sort(() => Math.random() - 0.5)
-      const selectedRows = shuffled.slice(0, 5)
+      // Prioritize rows that need annotation
+      // First, find rows that need Annotator 1
+      let candidateRows = allRows.filter((row: any) => row.needsAnnotatorRound === 1)
+      
+      // If no rows need Annotator 1, check for Annotator 2
+      if (candidateRows.length === 0) {
+        candidateRows = allRows.filter((row: any) => row.needsAnnotatorRound === 2)
+      }
+      
+      // If no rows need Annotator 2, check for Annotator 3
+      if (candidateRows.length === 0) {
+        candidateRows = allRows.filter((row: any) => row.needsAnnotatorRound === 3)
+      }
+      
+      // If all rows are annotated, fall back to all rows (shouldn't happen, but safety)
+      if (candidateRows.length === 0) {
+        console.warn('All rows appear to be annotated. Showing random rows.')
+        candidateRows = allRows
+      }
+      
+      const firstCandidate = candidateRows[0] as any
+      console.log(`Found ${candidateRows.length} rows needing annotation (round ${firstCandidate?.needsAnnotatorRound || 'unknown'})`)
 
-      setData(selectedRows)
+      // Select 5 random rows from candidates
+      const shuffled = [...candidateRows].sort(() => Math.random() - 0.5)
+      const selectedRows = shuffled.slice(0, 5)
+      
+      // Remove the needsAnnotatorRound property before setting state
+      const cleanedRows = selectedRows.map(({ needsAnnotatorRound, ...row }: any) => row)
+
+      setData(cleanedRows)
       setLoading(false)
     } catch (err: any) {
       setError(err.message || 'Failed to load data')
