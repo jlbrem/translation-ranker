@@ -100,6 +100,13 @@ export default function Home() {
         
         if (!id || !sentence) continue
 
+        const numericIdMatch = id.match(/\d+/)
+        const numericId = numericIdMatch ? parseInt(numericIdMatch[0], 10) : null
+
+        if (numericId === null || Number.isNaN(numericId) || numericId < 0 || numericId > 49) {
+          continue
+        }
+
         const translations: string[] = []
         const translationColumns: string[] = []
         
