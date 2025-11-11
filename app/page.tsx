@@ -171,36 +171,35 @@ export default function Home() {
         const annotator2CommentValue = annotator2CommentIndex >= 0 ? (row[annotator2CommentIndex]?.trim() || '') : ''
         const annotator3CommentValue = annotator3CommentIndex >= 0 ? (row[annotator3CommentIndex]?.trim() || '') : ''
 
+        const annotator1RankFilled = annotator1RankValue.length > 0
+        const annotator2RankFilled = annotator2RankValue.length > 0
+        const annotator3RankFilled = annotator3RankValue.length > 0
+
+        const annotator1CommentFilled = annotator1CommentIndex < 0 ? true : annotator1CommentValue.length > 0
+        const annotator2CommentFilled = annotator2CommentIndex < 0 ? true : annotator2CommentValue.length > 0
+        const annotator3CommentFilled = annotator3CommentIndex < 0 ? true : annotator3CommentValue.length > 0
+        
         const hasAllAnnotatorData =
-          annotator1RankValue.length > 0 &&
-          (annotator1CommentIndex < 0 || annotator1CommentValue.length > 0) &&
-          annotator2RankValue.length > 0 &&
-          (annotator2CommentIndex < 0 || annotator2CommentValue.length > 0) &&
-          annotator3RankValue.length > 0 &&
-          (annotator3CommentIndex < 0 || annotator3CommentValue.length > 0)
+          annotator1RankFilled && annotator1CommentFilled &&
+          annotator2RankFilled && annotator2CommentFilled &&
+          annotator3RankFilled && annotator3CommentFilled
 
         if (hasAllAnnotatorData) {
           console.log('Skipping row with all annotator columns filled:', id)
           continue
         }
         
-        const annotator1Complete = annotator1RankIndex >= 0 && annotator1CommentIndex >= 0
-          ? annotator1RankValue.length > 0 && annotator1CommentValue.length > 0
-          : annotator1RankValue.length > 0
-        const annotator2Complete = annotator2RankIndex >= 0 && annotator2CommentIndex >= 0
-          ? annotator2RankValue.length > 0 && annotator2CommentValue.length > 0
-          : annotator2RankValue.length > 0
-        const annotator3Complete = annotator3RankIndex >= 0 && annotator3CommentIndex >= 0
-          ? annotator3RankValue.length > 0 && annotator3CommentValue.length > 0
-          : annotator3RankValue.length > 0
+        const annotator1Complete = annotator1RankFilled
+        const annotator2Complete = annotator2RankFilled
+        const annotator3Complete = annotator3RankFilled
         
         // Determine which annotator round is empty (priority: 1, then 2, then 3)
         let needsAnnotatorRound: 1 | 2 | 3 | null = null
-        if (!annotator1Complete) {
+        if (!annotator1RankFilled) {
           needsAnnotatorRound = 1
-        } else if (!annotator2Complete) {
+        } else if (!annotator2RankFilled) {
           needsAnnotatorRound = 2
-        } else if (!annotator3Complete) {
+        } else if (!annotator3RankFilled) {
           needsAnnotatorRound = 3
         }
 
