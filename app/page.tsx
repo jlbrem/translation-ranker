@@ -222,6 +222,14 @@ export default function Home() {
             annotator2Complete,
             annotator3Complete
           })
+
+          console.log('Row added for consideration:', {
+            id,
+            annotator1RankFilled,
+            annotator2RankFilled,
+            annotator3RankFilled,
+            needsAnnotatorRound
+          })
         }
       }
 
