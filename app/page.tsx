@@ -15,6 +15,9 @@ interface TranslationRow {
 
 interface TranslationRowWithNeeds extends TranslationRow {
   needsAnnotatorRound: 1 | 2 | 3 | null
+  annotator1Complete: boolean
+  annotator2Complete: boolean
+  annotator3Complete: boolean
 }
 
 const GOOGLE_SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU'
@@ -222,18 +225,21 @@ export default function Home() {
             rankedTranslations: shuffledTranslations,
             rankedColumnNames: shuffledColumnNames,
             originalRowIndex: i + 1, // 1-indexed for Google Sheets
-            needsAnnotatorRound
+            needsAnnotatorRound,
+            annotator1Complete,
+            annotator2Complete,
+            annotator3Complete
           })
         }
       }
 
       // Prioritize rows that need annotation for the lowest available round
-      let candidateRows = allRows.filter(row => row.needsAnnotatorRound === 1)
+      let candidateRows = allRows.filter(row => !row.annotator1Complete)
       if (candidateRows.length === 0) {
-        candidateRows = allRows.filter(row => row.needsAnnotatorRound === 2)
+        candidateRows = allRows.filter(row => row.annotator1Complete && !row.annotator2Complete)
       }
       if (candidateRows.length === 0) {
-        candidateRows = allRows.filter(row => row.needsAnnotatorRound === 3)
+        candidateRows = allRows.filter(row => row.annotator1Complete && row.annotator2Complete && !row.annotator3Complete)
       }
 
       if (candidateRows.length === 0) {
