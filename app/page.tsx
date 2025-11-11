@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd'
+import Papa from 'papaparse'
 
 interface TranslationRow {
   id: string
@@ -49,144 +50,113 @@ export default function Home() {
       }
 
       const csvText = await response.text()
-      const lines = csvText.split('\n').filter(line => line.trim())
-      
-      if (lines.length < 2) {
-        throw new Error('No data found in sheet')
+
+      const parsed = Papa.parse<Record<string, string>>(csvText, {
+        header: true,
+        skipEmptyLines: true,
+      })
+
+      if (parsed.errors && parsed.errors.length > 0) {
+        console.warn('CSV parse warnings:', parsed.errors.slice(0, 3))
       }
 
-      // Parse header
-      const headerLine = lines[0]
-      const headers = parseCSVLine(headerLine)
-      
-      // Find column indices
-      const idIndex = headers.findIndex(h => h.toLowerCase() === 'id')
-      const sentenceIndex = headers.findIndex(h => h.toLowerCase() === 'sentence')
-      
-      if (idIndex === -1 || sentenceIndex === -1) {
+      const rows = (parsed.data as Record<string, string>[]).filter(row => row && Object.keys(row).length > 0)
+      const headers = parsed.meta.fields?.filter((field): field is string => Boolean(field && field.trim())) || []
+
+      if (headers.length === 0) {
+        throw new Error('No columns found in sheet data')
+      }
+
+      const normalizeHeader = (value: string) => value.trim().toLowerCase()
+
+      const findField = (variants: string[]) => {
+        const normalizedVariants = variants.map(v => v.trim().toLowerCase())
+        return headers.find(header => normalizedVariants.includes(normalizeHeader(header))) || null
+      }
+
+      const idField = findField(['id'])
+      const sentenceField = findField(['sentence'])
+
+      if (!idField || !sentenceField) {
         throw new Error('Required columns (id, sentence) not found')
       }
 
-      // Translation columns are after sentence (columns C-I: ad, an, bo, ca, op, pa, no)
-      const translationStartIndex = sentenceIndex + 1
-      const headerColumnNames = headers.slice(translationStartIndex, translationStartIndex + 7).map(h => h.toLowerCase().trim())
-      
-      // Helper to find column indices with flexible naming
-      const findColumnIndex = (variants: string[]) => {
-        return headers.findIndex(header => {
-          const normalized = header.toLowerCase().trim()
-          return variants.some(variant => normalized === variant)
+      const translationOrder = ['ad', 'an', 'bo', 'ca', 'op', 'pa', 'no']
+      const translationFields = translationOrder
+        .map(code => {
+          const field = headers.find(header => normalizeHeader(header) === code)
+          return field ? { field, code } : null
         })
+        .filter((entry): entry is { field: string; code: string } => Boolean(entry))
+
+      if (translationFields.length === 0) {
+        throw new Error('Translation columns not found in sheet')
       }
 
-      const annotator1RankIndex = findColumnIndex([
-        'annotator_1_rankings',
-        'annotator 1 rankings',
-        'annotator_1',
-        'annotator 1'
-      ])
-      const annotator2RankIndex = findColumnIndex([
-        'annotator_2_rankings',
-        'annotator 2 rankings',
-        'annotator_2',
-        'annotator 2'
-      ])
-      const annotator3RankIndex = findColumnIndex([
-        'annotator_3_rankings',
-        'annotator 3 rankings',
-        'annotator_3',
-        'annotator 3'
-      ])
+      const annotatorRankFields = [1, 2, 3].map(num =>
+        findField([`annotator_${num}_rankings`, `annotator ${num} rankings`, `annotator_${num}`, `annotator ${num}`])
+      )
+      const annotatorCommentFields = [1, 2, 3].map(num =>
+        findField([`annotator_${num}_comments`, `annotator ${num} comments`, `annotator_${num}_comment`, `annotator ${num} comment`])
+      )
 
-      const annotator1CommentIndex = findColumnIndex([
-        'annotator_1_comments',
-        'annotator 1 comments',
-        'annotator_1_comment',
-        'annotator 1 comment'
-      ])
-      const annotator2CommentIndex = findColumnIndex([
-        'annotator_2_comments',
-        'annotator 2 comments',
-        'annotator_2_comment',
-        'annotator 2 comment'
-      ])
-      const annotator3CommentIndex = findColumnIndex([
-        'annotator_3_comments',
-        'annotator 3 comments',
-        'annotator_3_comment',
-        'annotator 3 comment'
-      ])
+      console.log('Translation columns discovered:', translationFields.map(t => t.field))
+      console.log('Annotator ranking fields:', annotatorRankFields)
+      console.log('Annotator comment fields:', annotatorCommentFields)
 
-      // Debug: log column names extracted
-      console.log('Translation column headers:', headerColumnNames)
-      console.log('Annotator column indices:', {
-        annotator1RankIndex,
-        annotator2RankIndex,
-        annotator3RankIndex,
-        annotator1CommentIndex,
-        annotator2CommentIndex,
-        annotator3CommentIndex
-      })
+      const getCellValue = (row: Record<string, string>, field: string | null | undefined) => {
+        if (!field) return ''
+        const raw = row[field]
+        if (raw === undefined || raw === null) return ''
+        return String(raw).trim()
+      }
 
-      // Parse all rows and track annotation status
       const allRows: TranslationRowWithNeeds[] = []
-      for (let i = 1; i < lines.length; i++) {
-        const row = parseCSVLine(lines[i])
-        
-        if (row.length < translationStartIndex + 7) continue
 
-        const id = row[idIndex]?.trim() || ''
-        const sentence = row[sentenceIndex]?.trim() || ''
-        
-        if (!id || !sentence) continue
+      rows.forEach((row, index) => {
+        const id = getCellValue(row, idField)
+        const sentence = getCellValue(row, sentenceField)
+
+        if (!id || !sentence) {
+          return
+        }
 
         const numericIdMatch = id.match(/\d+/)
         const numericId = numericIdMatch ? parseInt(numericIdMatch[0], 10) : null
 
         if (numericId === null || Number.isNaN(numericId) || numericId < 0 || numericId > 49) {
           console.log('Skipping row outside ID range 0-49:', id)
-          continue
+          return
         }
 
-        const translations: string[] = []
-        const translationColumns: string[] = []
-        
-        // Map translations to their column names
-        for (let j = 0; j < 7; j++) {
-          const translation = row[translationStartIndex + j]?.trim() || ''
-          const columnName = headerColumnNames[j] || '' // Already lowercase from extraction
-          
-          if (translation && columnName) {
-            translations.push(translation)
-            translationColumns.push(columnName)
-          }
+        const translationPairs = translationFields
+          .map(({ field, code }) => {
+            const value = getCellValue(row, field)
+            if (!value) return null
+            return { value, code }
+          })
+          .filter((entry): entry is { value: string; code: string } => Boolean(entry))
+
+        if (translationPairs.length === 0) {
+          return
         }
-        
-        // Check annotator column values
-        const annotator1RankValue = annotator1RankIndex >= 0 ? (row[annotator1RankIndex]?.trim() || '') : ''
-        const annotator2RankValue = annotator2RankIndex >= 0 ? (row[annotator2RankIndex]?.trim() || '') : ''
-        const annotator3RankValue = annotator3RankIndex >= 0 ? (row[annotator3RankIndex]?.trim() || '') : ''
 
-        const annotator1CommentValue = annotator1CommentIndex >= 0 ? (row[annotator1CommentIndex]?.trim() || '') : ''
-        const annotator2CommentValue = annotator2CommentIndex >= 0 ? (row[annotator2CommentIndex]?.trim() || '') : ''
-        const annotator3CommentValue = annotator3CommentIndex >= 0 ? (row[annotator3CommentIndex]?.trim() || '') : ''
+        const translations = translationPairs.map(pair => pair.value)
+        const translationColumns = translationPairs.map(pair => pair.code)
 
-        const annotator1RankFilled = annotator1RankValue.length > 0
-        const annotator2RankFilled = annotator2RankValue.length > 0
-        const annotator3RankFilled = annotator3RankValue.length > 0
+        const annotatorRanks = annotatorRankFields.map(field => getCellValue(row, field))
+        const annotatorRankFilled = annotatorRanks.map(value => value.length > 0)
 
-        const hasAllAnnotatorData = annotator1RankFilled && annotator2RankFilled && annotator3RankFilled
-
+        const hasAllAnnotatorData = annotatorRankFilled.every(Boolean)
         if (hasAllAnnotatorData) {
           console.log('Skipping row with all annotator ranking columns filled:', id)
-          continue
+          return
         }
-        
-        const annotator1Complete = annotator1RankFilled
-        const annotator2Complete = annotator2RankFilled
-        const annotator3Complete = annotator3RankFilled
-        
-        // Determine which annotator round is empty (priority: 1, then 2, then 3)
+
+        const annotator1RankFilled = annotatorRankFilled[0] || false
+        const annotator2RankFilled = annotatorRankFilled[1] || false
+        const annotator3RankFilled = annotatorRankFilled[2] || false
+
         let needsAnnotatorRound: 1 | 2 | 3 | null = null
         if (!annotator1RankFilled) {
           needsAnnotatorRound = 1
@@ -198,40 +168,36 @@ export default function Home() {
 
         if (needsAnnotatorRound === null) {
           console.log('Skipping fully annotated row:', id)
-          continue
+          return
         }
 
-        if (translations.length > 0) {
-          // Randomize the initial order of translations and column names
-          const shuffledIndices = Array.from({ length: translations.length }, (_, idx) => idx)
-            .sort(() => Math.random() - 0.5)
-          
-          const shuffledTranslations = shuffledIndices.map(idx => translations[idx])
-          const shuffledColumnNames = shuffledIndices.map(idx => translationColumns[idx])
-          
-          allRows.push({
-            id,
-            sentence,
-            translations,
-            translationColumns,
-            rankedTranslations: shuffledTranslations,
-            rankedColumnNames: shuffledColumnNames,
-            originalRowIndex: i + 1, // 1-indexed for Google Sheets
-            needsAnnotatorRound,
-            annotator1Complete,
-            annotator2Complete,
-            annotator3Complete
-          })
+        // Randomize the initial order of translations and column names
+        const shuffledIndices = Array.from({ length: translations.length }, (_, idx) => idx).sort(() => Math.random() - 0.5)
+        const shuffledTranslations = shuffledIndices.map(idx => translations[idx])
+        const shuffledColumnNames = shuffledIndices.map(idx => translationColumns[idx])
 
-          console.log('Row added for consideration:', {
-            id,
-            annotator1RankFilled,
-            annotator2RankFilled,
-            annotator3RankFilled,
-            needsAnnotatorRound
-          })
-        }
-      }
+        allRows.push({
+          id,
+          sentence,
+          translations,
+          translationColumns,
+          rankedTranslations: shuffledTranslations,
+          rankedColumnNames: shuffledColumnNames,
+          originalRowIndex: index + 2, // account for header row in Google Sheets
+          needsAnnotatorRound,
+          annotator1Complete: annotator1RankFilled,
+          annotator2Complete: annotator2RankFilled,
+          annotator3Complete: annotator3RankFilled,
+        })
+
+        console.log('Row added for consideration:', {
+          id,
+          annotator1RankFilled,
+          annotator2RankFilled,
+          annotator3RankFilled,
+          needsAnnotatorRound,
+        })
+      })
 
       // Prioritize rows that need annotation for the lowest available round
       let candidateRows = allRows.filter(row => !row.annotator1Complete)
@@ -263,32 +229,6 @@ export default function Home() {
       setError(err.message || 'Failed to load data')
       setLoading(false)
     }
-  }
-
-  const parseCSVLine = (line: string): string[] => {
-    const result: string[] = []
-    let current = ''
-    let inQuotes = false
-
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i]
-      
-      if (char === '"') {
-        if (inQuotes && line[i + 1] === '"') {
-          current += '"'
-          i++ // Skip next quote
-        } else {
-          inQuotes = !inQuotes
-        }
-      } else if (char === ',' && !inQuotes) {
-        result.push(current.trim())
-        current = ''
-      } else {
-        current += char
-      }
-    }
-    result.push(current.trim())
-    return result
   }
 
   const onDragEnd = (result: DropResult, rowIndex: number) => {
