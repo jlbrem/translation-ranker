@@ -167,6 +167,19 @@ export default function Home() {
         const annotator1CommentValue = annotator1CommentIndex >= 0 ? (row[annotator1CommentIndex]?.trim() || '') : ''
         const annotator2CommentValue = annotator2CommentIndex >= 0 ? (row[annotator2CommentIndex]?.trim() || '') : ''
         const annotator3CommentValue = annotator3CommentIndex >= 0 ? (row[annotator3CommentIndex]?.trim() || '') : ''
+
+        const hasAllAnnotatorData =
+          annotator1RankValue.length > 0 &&
+          (annotator1CommentIndex < 0 || annotator1CommentValue.length > 0) &&
+          annotator2RankValue.length > 0 &&
+          (annotator2CommentIndex < 0 || annotator2CommentValue.length > 0) &&
+          annotator3RankValue.length > 0 &&
+          (annotator3CommentIndex < 0 || annotator3CommentValue.length > 0)
+
+        if (hasAllAnnotatorData) {
+          console.log('Skipping row with all annotator columns filled:', id)
+          continue
+        }
         
         const annotator1Complete = annotator1RankIndex >= 0 && annotator1CommentIndex >= 0
           ? annotator1RankValue.length > 0 && annotator1CommentValue.length > 0
