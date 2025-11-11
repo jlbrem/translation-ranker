@@ -108,6 +108,7 @@ export default function Home() {
         const numericId = numericIdMatch ? parseInt(numericIdMatch[0], 10) : null
 
         if (numericId === null || Number.isNaN(numericId) || numericId < 0 || numericId > 49) {
+          console.log('Skipping row outside ID range 0-49:', id)
           continue
         }
 
