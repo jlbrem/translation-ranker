@@ -64,33 +64,66 @@ export default function Home() {
         throw new Error('Required columns (id, sentence) not found')
       }
 
-      // Find annotator column indices
-      const annotator1Index = headers.findIndex(h => 
-        h.toLowerCase().trim() === 'annotator_1_rankings' || 
-        h.toLowerCase().trim() === 'annotator 1 rankings' ||
-        h.toLowerCase().trim() === 'annotator_1' ||
-        h.toLowerCase().trim() === 'annotator 1'
-      )
-      const annotator2Index = headers.findIndex(h => 
-        h.toLowerCase().trim() === 'annotator_2_rankings' || 
-        h.toLowerCase().trim() === 'annotator 2 rankings' ||
-        h.toLowerCase().trim() === 'annotator_2' ||
-        h.toLowerCase().trim() === 'annotator 2'
-      )
-      const annotator3Index = headers.findIndex(h => 
-        h.toLowerCase().trim() === 'annotator_3_rankings' || 
-        h.toLowerCase().trim() === 'annotator 3 rankings' ||
-        h.toLowerCase().trim() === 'annotator_3' ||
-        h.toLowerCase().trim() === 'annotator 3'
-      )
-
       // Translation columns are after sentence (columns C-I: ad, an, bo, ca, op, pa, no)
       const translationStartIndex = sentenceIndex + 1
       const headerColumnNames = headers.slice(translationStartIndex, translationStartIndex + 7).map(h => h.toLowerCase().trim())
       
+      // Helper to find column indices with flexible naming
+      const findColumnIndex = (variants: string[]) => {
+        return headers.findIndex(header => {
+          const normalized = header.toLowerCase().trim()
+          return variants.some(variant => normalized === variant)
+        })
+      }
+
+      const annotator1RankIndex = findColumnIndex([
+        'annotator_1_rankings',
+        'annotator 1 rankings',
+        'annotator_1',
+        'annotator 1'
+      ])
+      const annotator2RankIndex = findColumnIndex([
+        'annotator_2_rankings',
+        'annotator 2 rankings',
+        'annotator_2',
+        'annotator 2'
+      ])
+      const annotator3RankIndex = findColumnIndex([
+        'annotator_3_rankings',
+        'annotator 3 rankings',
+        'annotator_3',
+        'annotator 3'
+      ])
+
+      const annotator1CommentIndex = findColumnIndex([
+        'annotator_1_comments',
+        'annotator 1 comments',
+        'annotator_1_comment',
+        'annotator 1 comment'
+      ])
+      const annotator2CommentIndex = findColumnIndex([
+        'annotator_2_comments',
+        'annotator 2 comments',
+        'annotator_2_comment',
+        'annotator 2 comment'
+      ])
+      const annotator3CommentIndex = findColumnIndex([
+        'annotator_3_comments',
+        'annotator 3 comments',
+        'annotator_3_comment',
+        'annotator 3 comment'
+      ])
+
       // Debug: log column names extracted
       console.log('Translation column headers:', headerColumnNames)
-      console.log('Annotator column indices:', { annotator1Index, annotator2Index, annotator3Index })
+      console.log('Annotator column indices:', {
+        annotator1RankIndex,
+        annotator2RankIndex,
+        annotator3RankIndex,
+        annotator1CommentIndex,
+        annotator2CommentIndex,
+        annotator3CommentIndex
+      })
 
       // Parse all rows and track annotation status
       const allRows: TranslationRowWithNeeds[] = []
@@ -127,17 +160,31 @@ export default function Home() {
         }
         
         // Check annotator column values
-        const annotator1Value = annotator1Index >= 0 ? (row[annotator1Index]?.trim() || '') : ''
-        const annotator2Value = annotator2Index >= 0 ? (row[annotator2Index]?.trim() || '') : ''
-        const annotator3Value = annotator3Index >= 0 ? (row[annotator3Index]?.trim() || '') : ''
+        const annotator1RankValue = annotator1RankIndex >= 0 ? (row[annotator1RankIndex]?.trim() || '') : ''
+        const annotator2RankValue = annotator2RankIndex >= 0 ? (row[annotator2RankIndex]?.trim() || '') : ''
+        const annotator3RankValue = annotator3RankIndex >= 0 ? (row[annotator3RankIndex]?.trim() || '') : ''
+
+        const annotator1CommentValue = annotator1CommentIndex >= 0 ? (row[annotator1CommentIndex]?.trim() || '') : ''
+        const annotator2CommentValue = annotator2CommentIndex >= 0 ? (row[annotator2CommentIndex]?.trim() || '') : ''
+        const annotator3CommentValue = annotator3CommentIndex >= 0 ? (row[annotator3CommentIndex]?.trim() || '') : ''
+        
+        const annotator1Complete = annotator1RankIndex >= 0 && annotator1CommentIndex >= 0
+          ? annotator1RankValue.length > 0 && annotator1CommentValue.length > 0
+          : annotator1RankValue.length > 0
+        const annotator2Complete = annotator2RankIndex >= 0 && annotator2CommentIndex >= 0
+          ? annotator2RankValue.length > 0 && annotator2CommentValue.length > 0
+          : annotator2RankValue.length > 0
+        const annotator3Complete = annotator3RankIndex >= 0 && annotator3CommentIndex >= 0
+          ? annotator3RankValue.length > 0 && annotator3CommentValue.length > 0
+          : annotator3RankValue.length > 0
         
         // Determine which annotator round is empty (priority: 1, then 2, then 3)
         let needsAnnotatorRound: 1 | 2 | 3 | null = null
-        if (!annotator1Value) {
+        if (!annotator1Complete) {
           needsAnnotatorRound = 1
-        } else if (!annotator2Value) {
+        } else if (!annotator2Complete) {
           needsAnnotatorRound = 2
-        } else if (!annotator3Value) {
+        } else if (!annotator3Complete) {
           needsAnnotatorRound = 3
         }
 
