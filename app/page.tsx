@@ -175,17 +175,10 @@ export default function Home() {
         const annotator2RankFilled = annotator2RankValue.length > 0
         const annotator3RankFilled = annotator3RankValue.length > 0
 
-        const annotator1CommentFilled = annotator1CommentIndex < 0 ? true : annotator1CommentValue.length > 0
-        const annotator2CommentFilled = annotator2CommentIndex < 0 ? true : annotator2CommentValue.length > 0
-        const annotator3CommentFilled = annotator3CommentIndex < 0 ? true : annotator3CommentValue.length > 0
-        
-        const hasAllAnnotatorData =
-          annotator1RankFilled && annotator1CommentFilled &&
-          annotator2RankFilled && annotator2CommentFilled &&
-          annotator3RankFilled && annotator3CommentFilled
+        const hasAllAnnotatorData = annotator1RankFilled && annotator2RankFilled && annotator3RankFilled
 
         if (hasAllAnnotatorData) {
-          console.log('Skipping row with all annotator columns filled:', id)
+          console.log('Skipping row with all annotator ranking columns filled:', id)
           continue
         }
         
