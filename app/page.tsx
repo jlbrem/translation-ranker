@@ -188,6 +188,11 @@ export default function Home() {
           needsAnnotatorRound = 3
         }
 
+        if (needsAnnotatorRound === null) {
+          console.log('Skipping fully annotated row:', id)
+          continue
+        }
+
         if (translations.length > 0) {
           // Randomize the initial order of translations and column names
           const shuffledIndices = Array.from({ length: translations.length }, (_, idx) => idx)
