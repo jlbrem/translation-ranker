@@ -13,6 +13,10 @@ interface TranslationRow {
   originalRowIndex?: number // Store original row index for updating
 }
 
+interface TranslationRowWithNeeds extends TranslationRow {
+  needsAnnotatorRound: 1 | 2 | 3 | null
+}
+
 const GOOGLE_SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU'
 const GOOGLE_SHEET_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv&gid=0`
 
@@ -89,7 +93,7 @@ export default function Home() {
       console.log('Annotator column indices:', { annotator1Index, annotator2Index, annotator3Index })
 
       // Parse all rows and track annotation status
-      const allRows: TranslationRow[] = []
+      const allRows: TranslationRowWithNeeds[] = []
       for (let i = 1; i < lines.length; i++) {
         const row = parseCSVLine(lines[i])
         
@@ -138,7 +142,7 @@ export default function Home() {
 
         if (translations.length > 0) {
           // Randomize the initial order of translations and column names
-          const shuffledIndices = Array.from({ length: translations.length }, (_, i) => i)
+          const shuffledIndices = Array.from({ length: translations.length }, (_, idx) => idx)
             .sort(() => Math.random() - 0.5)
           
           const shuffledTranslations = shuffledIndices.map(idx => translations[idx])
@@ -152,40 +156,34 @@ export default function Home() {
             rankedTranslations: shuffledTranslations,
             rankedColumnNames: shuffledColumnNames,
             originalRowIndex: i + 1, // 1-indexed for Google Sheets
-            needsAnnotatorRound // Track which round this row needs
-          } as TranslationRow & { needsAnnotatorRound: 1 | 2 | 3 | null })
+            needsAnnotatorRound
+          })
         }
       }
 
-      // Prioritize rows that need annotation
-      // First, find rows that need Annotator 1
-      let candidateRows = allRows.filter((row: any) => row.needsAnnotatorRound === 1)
-      
-      // If no rows need Annotator 1, check for Annotator 2
+      // Prioritize rows that need annotation for the lowest available round
+      let candidateRows = allRows.filter(row => row.needsAnnotatorRound === 1)
       if (candidateRows.length === 0) {
-        candidateRows = allRows.filter((row: any) => row.needsAnnotatorRound === 2)
+        candidateRows = allRows.filter(row => row.needsAnnotatorRound === 2)
       }
-      
-      // If no rows need Annotator 2, check for Annotator 3
       if (candidateRows.length === 0) {
-        candidateRows = allRows.filter((row: any) => row.needsAnnotatorRound === 3)
+        candidateRows = allRows.filter(row => row.needsAnnotatorRound === 3)
       }
-      
-      // If all rows are annotated, fall back to all rows (shouldn't happen, but safety)
-      if (candidateRows.length === 0) {
-        console.warn('All rows appear to be annotated. Showing random rows.')
-        candidateRows = allRows
-      }
-      
-      const firstCandidate = candidateRows[0] as any
-      console.log(`Found ${candidateRows.length} rows needing annotation (round ${firstCandidate?.needsAnnotatorRound || 'unknown'})`)
 
-      // Select 5 random rows from candidates
+      if (candidateRows.length === 0) {
+        console.warn('All eligible rows (IDs 0-49) are fully annotated. No examples available.')
+        setData([])
+        setLoading(false)
+        return
+      }
+
+      const firstCandidate = candidateRows[0]
+      console.log(`Found ${candidateRows.length} eligible rows needing annotation (round ${firstCandidate?.needsAnnotatorRound || 'unknown'})`)
+
+      // Select up to 5 random rows from the prioritized candidate set
       const shuffled = [...candidateRows].sort(() => Math.random() - 0.5)
       const selectedRows = shuffled.slice(0, 5)
-      
-      // Remove the needsAnnotatorRound property before setting state
-      const cleanedRows = selectedRows.map(({ needsAnnotatorRound, ...row }: any) => row)
+      const cleanedRows = selectedRows.map(({ needsAnnotatorRound, ...row }) => row)
 
       setData(cleanedRows)
       setLoading(false)
