@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GOOGLE_SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU'
+const DEFAULT_GOOGLE_SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU'
+const GOOGLE_SHEET_ID =
+  process.env.GOOGLE_SHEET_ID ||
+  process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID ||
+  DEFAULT_GOOGLE_SHEET_ID
+const GOOGLE_SHEET_GID = process.env.GOOGLE_SHEET_GID || process.env.NEXT_PUBLIC_GOOGLE_SHEET_GID || '0'
 const GOOGLE_APPS_SCRIPT_URL = process.env.GOOGLE_APPS_SCRIPT_URL
 
 interface AnnotationUpdate {
@@ -120,7 +125,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fallback: Prepare updates (for when Google Apps Script is not configured)
-    const csvUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv&gid=0`
+    const csvUrl = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv&gid=${GOOGLE_SHEET_GID}`
     const csvResponse = await fetch(csvUrl)
     
     if (!csvResponse.ok) {

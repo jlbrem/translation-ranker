@@ -20,6 +20,29 @@ The Google Sheet should have the following columns:
 After annotation, new columns will be added:
 - `ranked_translation_1` through `ranked_translation_7` - The reranked translations in order
 
+## Configuration
+
+Set the sheet IDs via environment variables so you only have to change them once:
+
+| Scope | Variable | Description |
+| --- | --- | --- |
+| Client (Next.js) | `NEXT_PUBLIC_GOOGLE_SHEET_ID` | Spreadsheet ID used when loading data |
+| Client (optional) | `NEXT_PUBLIC_GOOGLE_SHEET_GID` | Specific tab GID (defaults to `0`) |
+| Server (API route) | `GOOGLE_SHEET_ID` | Used when the fallback CSV fetch runs; falls back to `NEXT_PUBLIC_GOOGLE_SHEET_ID` |
+| Server (optional) | `GOOGLE_SHEET_GID` | Tab GID for server-side CSV fetch |
+
+Create an `.env.local` file for local development:
+
+```
+NEXT_PUBLIC_GOOGLE_SHEET_ID=your_sheet_id
+NEXT_PUBLIC_GOOGLE_SHEET_GID=0
+GOOGLE_APPS_SCRIPT_URL=https://script.google.com/...
+GOOGLE_SHEET_ID=your_sheet_id   # optional override
+GOOGLE_SHEET_GID=0              # optional override
+```
+
+Remember to set the same variables in your Vercel project settings.
+
 ## Setup Instructions
 
 ### 1. Local Development
@@ -46,7 +69,7 @@ To enable saving annotations back to Google Sheets, you need to deploy a Google 
 
 3. Delete any existing code and paste the contents of `google-apps-script.js` from this repository
 
-4. Update the `SHEET_ID` in the script if needed (it should already be correct)
+4. Update the `SHEET_ID` in the script if needed (keep it in sync with the env vars above)
 
 5. Click **Save** (💾 icon) and give your project a name
 

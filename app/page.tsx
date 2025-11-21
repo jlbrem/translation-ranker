@@ -21,8 +21,10 @@ interface TranslationRowWithNeeds extends TranslationRow {
   annotator3Complete: boolean
 }
 
-const GOOGLE_SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU'
-const GOOGLE_SHEET_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv&gid=0`
+const DEFAULT_GOOGLE_SHEET_ID = '1C28DqXCkz8DqCeuCF5ibNqiq50l4K4XKp5TnjIGPYbU'
+const GOOGLE_SHEET_ID = process.env.NEXT_PUBLIC_GOOGLE_SHEET_ID || DEFAULT_GOOGLE_SHEET_ID
+const GOOGLE_SHEET_GID = process.env.NEXT_PUBLIC_GOOGLE_SHEET_GID || '0'
+const GOOGLE_SHEET_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/export?format=csv&gid=${GOOGLE_SHEET_GID}`
 
 export default function Home() {
   const [data, setData] = useState<TranslationRow[]>([])
