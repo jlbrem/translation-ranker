@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { DragDropContext, Droppable, Draggable, DropResult } from 'react-beautiful-dnd'
 import Papa from 'papaparse'
 
@@ -28,20 +28,17 @@ const GOOGLE_SHEET_URL = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_
 
 export default function Home() {
   const [data, setData] = useState<TranslationRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [shouldRedirect, setShouldRedirect] = useState(false)
   const [comments, setComments] = useState<{ [key: string]: string }>({}) // id -> comment
   const [error, setError] = useState<string | null>(null)
+  const [showIntro, setShowIntro] = useState(true)
 
   const PROLIFIC_COMPLETION_URL = 'https://app.prolific.com/submissions/complete?cc=C1HEEFFM'
 
-  useEffect(() => {
-    loadData()
-  }, [])
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setLoading(true)
       setError(null)
@@ -126,8 +123,8 @@ export default function Home() {
         const numericIdMatch = id.match(/\d+/)
         const numericId = numericIdMatch ? parseInt(numericIdMatch[0], 10) : null
 
-        if (numericId === null || Number.isNaN(numericId) || numericId < 0 || numericId > 49) {
-          console.log('Skipping row outside ID range 0-49:', id)
+        if (numericId === null || Number.isNaN(numericId) || numericId < 0 || numericId > 9) {
+          console.log('Skipping row outside ID range 0-9:', id)
           return
         }
 
@@ -231,6 +228,16 @@ export default function Home() {
       setError(err.message || 'Failed to load data')
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    if (!showIntro) {
+      loadData()
+    }
+  }, [showIntro, loadData])
+
+  const startAnnotation = () => {
+    setShowIntro(false)
   }
 
   const onDragEnd = (result: DropResult, rowIndex: number) => {
@@ -452,6 +459,35 @@ export default function Home() {
           <div style={{ color: '#666', fontSize: '1.1rem', marginBottom: '20px' }}>
             If you are not redirected automatically, <a href={PROLIFIC_COMPLETION_URL} style={{ color: '#667eea' }}>click here</a>.
           </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (showIntro) {
+    return (
+      <div className="container">
+        <div className="header">
+          <h1>Translation Ranker</h1>
+        </div>
+        <div style={{ padding: '30px', background: '#f8f9fa', borderRadius: '8px', lineHeight: 1.6 }}>
+          <p style={{ fontSize: '1.05rem', color: '#333', marginBottom: '20px' }}>
+            Please rate each translation as if you are a monolingual English speaker watching a movie.
+            Assume whatever the translation describes is exactly what will appear on screen and will be
+            spoken aloud by the characters. Focus on how natural, accurate, and immersive each line would
+            feel in that context.
+          </p>
+          <p style={{ marginBottom: '30px', color: '#555' }}>
+            When you&apos;re ready, continue to see the five sentences that need annotation.
+          </p>
+          <button
+            onClick={startAnnotation}
+            className="btn btn-primary"
+            style={{ fontSize: '1.1rem', padding: '12px 28px' }}
+            type="button"
+          >
+            I understand — start annotating
+          </button>
         </div>
       </div>
     )
