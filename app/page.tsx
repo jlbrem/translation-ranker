@@ -475,7 +475,8 @@ export default function Home() {
             Please rate each translation as if you are a monolingual English speaker watching a movie.
             Assume whatever the translation describes is exactly what will appear on screen and will be
             spoken aloud by the characters. Focus on how natural, accurate, and immersive each line would
-            feel in that context.
+            feel in that context as well as how relatable it would be for an English speaker to enjoy the movie
+            and feel entertained.
           </p>
           <p style={{ marginBottom: '30px', color: '#555' }}>
             When you&apos;re ready, continue to see the five sentences that need annotation.
