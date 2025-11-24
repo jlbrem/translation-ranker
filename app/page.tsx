@@ -472,11 +472,10 @@ export default function Home() {
         </div>
         <div style={{ padding: '30px', background: '#f8f9fa', borderRadius: '8px', lineHeight: 1.6 }}>
           <p style={{ fontSize: '1.05rem', color: '#333', marginBottom: '20px' }}>
-            Please rate each translation as if you are a monolingual English speaker watching a movie.
-            Assume whatever the translation describes is exactly what will appear on screen and will be
-            spoken aloud by the characters. Focus on how natural, accurate, and immersive each line would
-            feel in that context as well as how relatable it would be for an English speaker to enjoy the movie
-            and feel entertained.
+            Please rate each translation as if you are a monolingual English speaker reading an educational textbook.
+            Assume whatever the translation describes is exactly what will appear in the texbook. Focus on how natural, 
+            accurate, and informative each line would appear in that context as well as how educational it would be for an 
+            English speaker to read the textbook and understand as much of the original meaning as possible.
           </p>
           <p style={{ marginBottom: '30px', color: '#555' }}>
             When you&apos;re ready, continue to see the five sentences that need annotation.
